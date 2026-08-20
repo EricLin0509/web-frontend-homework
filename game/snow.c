@@ -99,54 +99,51 @@ bool init_snow(Snow *snow, SDL_Renderer *renderer)
     return true;
 }
 
-static void init_snowflake(Snowflake *snowflake, uint32_t w, uint32_t h)
+static void init_snowflake(Snowflake *snowflake, int idx, uint32_t w, uint32_t h)
 {
-    if (snowflake == NULL) return;
+    if (snowflake == NULL ||
+        idx < 0 || idx >= MAX_SNOWFLAKES) return;
 
-        /* Randomly position */
-        snowflake->x = (float)(rand() % w);
-        snowflake->y = (float)(rand() % h);
+        /* Random position */
+        snowflake->x[idx] = (float)(rand() % w);
+        snowflake->y[idx] = (float)(rand() % h);
 
-        /* Randomly speed, size, opacity */
-        snowflake->speed = 0.5f + (rand() % 100) / 100.0f; // 0.5~1.5
-        snowflake->wind = 0.0f;
-        snowflake->size = 1.0f + (rand() % 200) / 100.0f; // 1~3
-        snowflake->opacity = 0.5f + (rand() % 50) / 100.0f; // 0.5~1.0
+        /* Snowflake size, speed and opacity */
+        snowflake->size[idx] = 1.0f + (rand() % 200) / 100.0f; // 1~3
+        snowflake->speed[idx] = 0.5f + (rand() % 100) / 100.0f; // 0.5~1.5
+        snowflake->opacity[idx] = 0.5f + (rand() % 50) / 100.0f; // 0.5~1.0
 }
 
 /* Increment update the snowflake array from start to end */
-static void init_snowflake_inc(Snowflake *snowflake_start_ptr, Snowflake *snowflake_end_ptr, uint32_t w, uint32_t h)
+static void init_snowflake_inc(Snowflake *snowflake, int start_idx, int end_idx, uint32_t w, uint32_t h)
 {
-    if (snowflake_start_ptr == NULL || snowflake_end_ptr == NULL
-        || snowflake_start_ptr >= snowflake_end_ptr) return;
+    if (snowflake == NULL
+        || start_idx >= end_idx) return;
 
-    Snowflake *update_region = snowflake_start_ptr;
-    while (update_region <= snowflake_end_ptr)
+    while (start_idx < end_idx)
     {
-        init_snowflake(update_region, w, h);
-        update_region++;
+        init_snowflake(snowflake, start_idx, w, h);
+        start_idx++;
     }
 }
 
-void increase_snow_count(Snow *snow, int increase, uint32_t w, uint32_t h)
+void increase_snow_count(Snow *snow, int increment, uint32_t w, uint32_t h)
 {
-    if (snow == NULL || increase == 0) return;
+    if (snow == NULL || increment == 0) return;
 
-    if (snow->snowflake_count < MAX_SNOWFLAKES && increase > 0)
+    if (snow->snowflake_count < MAX_SNOWFLAKES && increment > 0)
     {
         int old_count = snow->snowflake_count;
 
-        snow->snowflake_count = (snow->snowflake_count + increase) <= MAX_SNOWFLAKES ?
-            snow->snowflake_count + increase : MAX_SNOWFLAKES;
+        snow->snowflake_count = (snow->snowflake_count + increment) <= MAX_SNOWFLAKES ?
+            snow->snowflake_count + increment : MAX_SNOWFLAKES;
 
-        Snowflake *start = snow->snowflakes + old_count;
-        Snowflake *end = snow->snowflakes + snow->snowflake_count - 1;
-        init_snowflake_inc(start, end, w, h);
+        init_snowflake_inc(&snow->snowflakes, old_count, snow->snowflake_count - 1, w, h);
     }
 
-    if (snow->snowflake_count > 0 && increase < 0)
-        snow->snowflake_count = (snow->snowflake_count + increase) >= 0 ?
-            snow->snowflake_count + increase : 0;
+    if (snow->snowflake_count > 0 && increment < 0)
+        snow->snowflake_count = (snow->snowflake_count + increment) >= 0 ?
+            snow->snowflake_count + increment : 0;
 
     snow->num_vertices = snow->snowflake_count * 4;
     snow->num_indices = snow->snowflake_count * 6;
@@ -158,22 +155,22 @@ void update_snow(Snow *snow, uint32_t w, uint32_t h, float dt)
     wind_timer += dt;
     float wind = sinf(wind_timer * 0.5f) * 0.3f;
 
+    Snowflake *s = &snow->snowflakes;
     for (int i = 0; i < snow->snowflake_count; i++)
     {
-        Snowflake *s = &snow->snowflakes[i];
         // Basic movement
-        s->y += s->speed * 60.0f * dt;
-        s->x += wind * 60.0f * dt;
+        s->x[i] += wind * 60.0f * dt;
+        s->y[i] += s->speed[i] * 60.0f * dt;
         // horizontal jitter
-        s->x += sinf(s->y * 0.1f + i) * 0.2f * dt * 60.0f;
+        s->x[i] += sinf(s->y[i] * 0.1f + i) * 0.2f * dt * 60.0f;
         // boundary loop: roll out of bottom or top, wrap around
-        if (s->y > h + 10)
+        if (s->y[i] > h + 10)
         {
-            s->y = -10.0f;
-            s->x = (float)(rand() % w);
+            s->y[i] = -10.0f;
+            s->x[i] = (float)(rand() % w);
         }
-        if (s->x < -10) s->x += w + 20;
-        if (s->x > w + 10) s->x -= w + 20;
+        if (s->x[i] < -10) s->x[i] += w + 20;
+        if (s->x[i] > w + 10) s->x[i] -= w + 20;
     }
 }
 
@@ -183,15 +180,13 @@ void render_snow(Snow *snow, SDL_Renderer *renderer)
     if (renderer == NULL || snow == NULL) return;
     if (snow->snow_sprite == NULL) return;
 
-    const int snow_count = snow->snowflake_count;
-
     SDL_Vertex *v = snow->snow_vertices;
-    for (int i = 0; i < snow_count; i++)
+    Snowflake *s = &snow->snowflakes;
+    for (int i = 0; i < snow->snowflake_count; i++)
     {
-        Snowflake *s = &snow->snowflakes[i];
-        float w = s->size;
-        float x = s->x, y = s->y;
-        Uint8 alpha = (Uint8)(s->opacity * 255);
+        float w = s->size[i];
+        float x = s->x[i], y = s->y[i];
+        Uint8 alpha = (Uint8)(s->opacity[i] * 255);
         SDL_FColor color = { 1.0f, 1.0f, 1.0f, alpha / 255.0f };
 
         // The positions of the four corners of the snowflake rectangle

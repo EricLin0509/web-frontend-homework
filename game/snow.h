@@ -10,15 +10,17 @@
 #include <SDL3/SDL.h>
 
 typedef struct {
-    float x, y; // position
-    float speed; // fall speed
-    float wind; // wind speed
-    float size; // size
-    float opacity; // opacity
+    /* The position of each snowflake */
+    float x[MAX_SNOWFLAKES];
+    float y[MAX_SNOWFLAKES];
+
+    float size[MAX_SNOWFLAKES]; // size
+    float speed[MAX_SNOWFLAKES]; // fall speed
+    float opacity[MAX_SNOWFLAKES]; // opacity
 } Snowflake;
 
 typedef struct {
-    Snowflake snowflakes[MAX_SNOWFLAKES];
+    Snowflake snowflakes;
     int snowflake_count;
 
     /* The vertex and index arrays for snowflakes */
@@ -31,7 +33,7 @@ typedef struct {
 
 bool init_snow(Snow *snow, SDL_Renderer *renderer);
 
-void increase_snow_count(Snow *snow, int increase, uint32_t w, uint32_t h);
+void increase_snow_count(Snow *snow, int increment, uint32_t w, uint32_t h);
 
 void update_snow(Snow *snow, uint32_t w, uint32_t h, float dt);
 
