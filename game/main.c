@@ -12,6 +12,7 @@
 
 #include "ansi-color.h"
 #include "game.h"
+#include "game_events.h"
 
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 768
@@ -27,7 +28,7 @@
 #endif
 
 #ifdef __EMSCRIPTEN__
-Game *game_ptr = NULL; // Expose the game struct to WebAssembly
+static Game *game_ptr = NULL; // Expose the game struct to WebAssembly
 
 void notify_snow_count_change(void);
 #ifdef BENCHMARK_MODE
@@ -139,6 +140,8 @@ static void game_reset(Game *game)
     reset_ball(&game->ball, SHOUD_MOVE_REVERSE);
     reset_paddle(&game->left_paddle);
     reset_paddle(&game->right_paddle);
+
+    scheduler_clear_tasks(game->scheduler); // Clear all remaining tasks in the scheduler
 
 #if defined(__EMSCRIPTEN__) && !defined(BENCHMARK_MODE)
     notify_score_points();
@@ -278,8 +281,7 @@ static void double_tap_actions(Game *game)
             game->state = GAME_PAUSED;
             break;
         case GAME_PAUSED:
-            game->resume_delay_time = 0.5f; // Resume the game should a bit longer
-            game->state = GAME_RUNNING;
+            scheduler_add_task(game->scheduler, 0, game_resuming, game);
             break;
         case GAME_OVER:
             game_reset(game);
@@ -333,8 +335,7 @@ static void handle_space_key(Game *game)
             game->state = GAME_PAUSED;
             break;
         case GAME_PAUSED:
-            game->resume_delay_time = 0.5f;
-            game->state = GAME_RUNNING;
+            scheduler_add_task(game->scheduler, 0, game_resuming, game);
             break;
         case GAME_OVER:
             game_reset(game);
@@ -539,6 +540,7 @@ static void render(Game *game)
             break;
         case GAME_PAUSED:
             show_paused_screen(game);
+        case GAME_RESUMING:
         case GAME_RUNNING:
             show_middle_line(game);
             show_game_screen(game);
@@ -740,6 +742,9 @@ LIST_OF_TEXTS
     /* Initialize theme */
     set_theme(&game);
 
+    /* Initialize scheduler */
+    game.scheduler = scheduler_create();
+
 #ifndef __EMSCRIPTEN__
 
     /* Initialize touch state */
@@ -761,7 +766,6 @@ LIST_OF_TEXTS
     game.score_to_win = CLASSIC_WIN_SCORE;
 
     game.state = GAME_INIT;
-    game.resume_delay_time = 0.0f;
 
 #ifndef BENCHMARK_MODE
     game.last_key_ticks = SDL_GetTicks();
@@ -772,6 +776,8 @@ LIST_OF_TEXTS
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
     Game *game = (Game *)appstate;
+
+    scheduler_process_tasks(game->scheduler);
 
 #if defined(__EMSCRIPTEN__) && !defined(BENCHMARK_MODE)
     notify_game_state();
@@ -791,14 +797,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 #ifdef BENCHMARK_MODE
     report_wasm_frame();
 #endif
-
-    /* Resuming the game after pause */
-    if (game->state == GAME_RUNNING &&
-            game->resume_delay_time > 0)
-    {
-        game->resume_delay_time -= dt;
-        return SDL_APP_CONTINUE;
-    }
 
     if (game->state != GAME_RUNNING)
         return SDL_APP_CONTINUE;
@@ -887,6 +885,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     if (game->snow.snow_sprite)
         SDL_DestroyTexture(game->snow.snow_sprite);
 
+    if (game->scheduler)
+        scheduler_destroy(&game->scheduler);
+
     for (int i = 0; i < NUM_TEXTS; i++)
         destroy_text_texture(game->texts + i);
 
@@ -923,8 +924,7 @@ void resume_game(void)
 
     if (game_ptr->state != GAME_PAUSED) return;
 
-    game_ptr->resume_delay_time = 0.5f;
-    game_ptr->state = GAME_RUNNING;
+    scheduler_add_task(game_ptr->scheduler, 0, game_resuming, game_ptr);
 }
 
 EMSCRIPTEN_KEEPALIVE

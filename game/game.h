@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "scheduler.h"
 #include "difficulty.h"
 #include "text.h"
 #include "ball.h"
@@ -18,6 +19,7 @@
 typedef enum {
     GAME_INIT,
     GAME_RUNNING,
+    GAME_RESUMING, // The delay state before the game resume
     GAME_PAUSED,
     GAME_OVER
 } GameState;
@@ -85,6 +87,8 @@ typedef struct {
 
     Snow snow;
 
+    Scheduler *scheduler;
+
     Text texts[NUM_TEXTS]; // This include all the texts in LIST_OF_TEXTS
 
     Uint8 mode_flags; // Flags for the game mode
@@ -105,7 +109,6 @@ typedef struct {
 
     Uint64 last_counter;
     bool is_first_frame;
-    float resume_delay_time;
 
 #ifndef BENCHMARK_MODE
     Uint64 last_key_ticks;

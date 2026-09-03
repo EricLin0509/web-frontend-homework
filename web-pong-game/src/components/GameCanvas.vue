@@ -60,13 +60,13 @@
               </transition>
             </div>
 
-            <div v-if="gameState === 2" class="button-row">
+            <div v-if="gameState === 3" class="button-row">
               <button @click="resumeGame" class="game-btn">➡️ Resume Game</button>
             </div>
-            <div v-if="gameState === 3" class="button-row">
+            <div v-if="gameState === 4" class="button-row">
               <button @click="restartGame" class="game-btn">🔄 Restart Game</button>
             </div>
-            <div v-if="gameState === 2 || gameState === 3" class="button-row">
+            <div v-if="gameState === 3 || gameState === 4" class="button-row">
               <button @click="gotoMenu" class="game-btn">↩️ Back to Menu</button>
             </div>
           </div>
