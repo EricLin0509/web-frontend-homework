@@ -61,6 +61,7 @@ static void reset_idle_timer(Game *game)
                     IDLE_TIMEOUT_MS,
                     idle_timeout,
                     idle_timeout_cancel,
+                    free,
                     data);
 }
 
@@ -150,6 +151,7 @@ static void game_reset(Game *game)
     reset_paddle(&game->right_paddle);
 
     scheduler_clear_tasks(game->scheduler); // Clear all remaining tasks in the scheduler
+    reset_idle_timer(game); // Reset the idle timer
 
 #if defined(__EMSCRIPTEN__) && !defined(BENCHMARK_MODE)
     notify_score_points();
@@ -291,7 +293,7 @@ static void double_tap_actions(Game *game)
             game->state = GAME_PAUSED;
             break;
         case GAME_PAUSED:
-            scheduler_add_task(game->scheduler, 0, game_resuming, NULL, game);
+            scheduler_add_task(game->scheduler, 0, game_resuming, NULL, NULL, game);
             break;
         case GAME_OVER:
             game_reset(game);
@@ -349,7 +351,7 @@ static void handle_space_key(Game *game)
             game->state = GAME_PAUSED;
             break;
         case GAME_PAUSED:
-            scheduler_add_task(game->scheduler, 0, game_resuming, NULL, game);
+            scheduler_add_task(game->scheduler, 0, game_resuming, NULL, NULL, game);
             break;
         case GAME_OVER:
             game_reset(game);
@@ -910,7 +912,7 @@ void resume_game(void)
 
     if (game_ptr->state != GAME_PAUSED) return;
 
-    scheduler_add_task(game_ptr->scheduler, 0, game_resuming, NULL, game_ptr);
+    scheduler_add_task(game_ptr->scheduler, 0, game_resuming, NULL, NULL, game_ptr);
 }
 
 EMSCRIPTEN_KEEPALIVE

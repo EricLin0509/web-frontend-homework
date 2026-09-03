@@ -13,6 +13,12 @@ typedef struct Scheduler {
     std::priority_queue<Task, std::vector<Task>, TaskOrder> task_queue;
 } Scheduler;
 
+static inline void run_destroyer(const Task& task)
+{
+    if (task.destroyer)
+        task.destroyer(task.user_data); // Destroy the user data if the destroyer exists
+}
+
 Scheduler *scheduler_create(void)
 {
     return new Scheduler;
@@ -22,16 +28,18 @@ void scheduler_destroy(Scheduler **scheduler)
 {
     if (!scheduler || !*scheduler) return;
 
+    scheduler_clear_tasks(*scheduler); // Clear all tasks from the scheduler before destroying the scheduler
     delete *scheduler;
 }
 
-void scheduler_add_task(Scheduler *scheduler, Uint64 relative_time, void (*callback)(void *arg),
-                 bool (*cancel_checker)(const Task *task), void *user_data)
+void scheduler_add_task(Scheduler *scheduler, Uint64 relative_time,
+                      void (*callback)(void *arg), bool (*cancel_checker)(const Task *task), 
+                      void (*destroyer)(void *user_data), void *user_data)
 {
     if (!scheduler || !callback) return;
 
     Uint64 trigger_time = relative_time + SDL_GetTicks() + 1; // Calculate the absolute trigger time
-    scheduler->task_queue.push(Task{trigger_time, callback, cancel_checker, user_data});
+    scheduler->task_queue.push(Task{trigger_time, callback, cancel_checker, destroyer, user_data});
 }
 
 void scheduler_clear_tasks(Scheduler *scheduler)
@@ -40,6 +48,8 @@ void scheduler_clear_tasks(Scheduler *scheduler)
 
     while (!scheduler->task_queue.empty())
     {
+        const Task curr_task = scheduler->task_queue.top(); // Get the top task
+        run_destroyer(curr_task); // Destroy the user data if the destroyer exists
         scheduler->task_queue.pop(); // Remove all tasks from the queue
     }
 }
@@ -56,9 +66,14 @@ void scheduler_process_tasks(Scheduler *scheduler)
         scheduler->task_queue.pop();
 
         if (should_cancel)
-            continue; // Cancel the task if the cancel_checker returns true
+        {
+            run_destroyer(curr_task); // Destroy the user data if the destroyer exists
+            continue; // Skip the callback if the task should be canceled
+        }
 
         if (curr_task.callback)
             curr_task.callback(curr_task.user_data); // Execute the callback function
+
+        run_destroyer(curr_task); // Destroy the user data if the destroyer exists
     }
 }
