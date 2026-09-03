@@ -25,12 +25,13 @@ void scheduler_destroy(Scheduler **scheduler)
     delete *scheduler;
 }
 
-void scheduler_add_task(Scheduler *scheduler, Uint64 relative_time, void (*callback)(void *arg), void *user_data)
+void scheduler_add_task(Scheduler *scheduler, Uint64 relative_time, void (*callback)(void *arg),
+                 bool (*cancel_checker)(const Task *task), void *user_data)
 {
     if (!scheduler || !callback) return;
 
     Uint64 trigger_time = relative_time + SDL_GetTicks() + 1; // Calculate the absolute trigger time
-    scheduler->task_queue.push(Task{trigger_time, callback, user_data});
+    scheduler->task_queue.push(Task{trigger_time, callback, cancel_checker, user_data});
 }
 
 void scheduler_clear_tasks(Scheduler *scheduler)
@@ -50,8 +51,12 @@ void scheduler_process_tasks(Scheduler *scheduler)
     while (!scheduler->task_queue.empty() &&
             scheduler->task_queue.top().trigger_time <= SDL_GetTicks())
     {
-        Task curr_task = scheduler->task_queue.top();
+        const Task curr_task = scheduler->task_queue.top();
+        bool should_cancel = curr_task.cancel_checker && curr_task.cancel_checker(&curr_task);
         scheduler->task_queue.pop();
+
+        if (should_cancel)
+            continue; // Cancel the task if the cancel_checker returns true
 
         if (curr_task.callback)
             curr_task.callback(curr_task.user_data); // Execute the callback function

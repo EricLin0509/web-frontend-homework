@@ -15,6 +15,7 @@
 
 #define INFINITE_MODE_MASK 0x01
 #define DOUBLE_PLAYER_MASK 0x02
+#define IDLE_MASK 0x08
 
 typedef enum {
     GAME_INIT,
@@ -111,7 +112,7 @@ typedef struct {
     bool is_first_frame;
 
 #ifndef BENCHMARK_MODE
-    Uint64 last_key_ticks;
+    Uint64 idle_token;
 #endif
 } Game;
 

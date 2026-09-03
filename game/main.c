@@ -42,6 +42,30 @@ void store_score_history(void);
 #endif
 #endif
 
+/* Idle Functions */
+#ifndef BENCHMARK_MODE
+
+/* Stop rendering when timeout to save energy */
+static void reset_idle_timer(Game *game)
+{
+    if (game == NULL) return;
+
+    game->idle_token++;
+    game->mode_flags &= ~IDLE_MASK; // Clear the idle flag
+
+    IdleTaskData *data = calloc(1, sizeof(IdleTaskData));
+    data->game = game;
+    data->token = game->idle_token;
+
+    scheduler_add_task(game->scheduler,
+                    IDLE_TIMEOUT_MS,
+                    idle_timeout,
+                    idle_timeout_cancel,
+                    data);
+}
+
+#endif
+
 /* ===== Theme Functions ====== */
 
 static void set_theme(Game *game)
@@ -66,12 +90,8 @@ static void set_theme(Game *game)
             fprintf(stderr, WARNING_TEXT " Failed to set color of text texture: %s\n", SDL_GetError());
     }
 
-#ifndef BENCHMARK_MODE
-    game->last_key_ticks = SDL_GetTicks(); // Refresh the UI
-
 #ifdef __EMSCRIPTEN__
     notify_mode_theme();
-#endif
 #endif
 }
 
@@ -86,12 +106,8 @@ static void switch_game_mode(Game *game)
 
     game->score_to_win = (game->mode_flags & INFINITE_MODE_MASK) ? INFINITE_WIN_SCORE : CLASSIC_WIN_SCORE;
 
-#ifndef BENCHMARK_MODE
-    game->last_key_ticks = SDL_GetTicks(); // Refresh the UI
-
 #ifdef __EMSCRIPTEN__
     notify_mode_theme();
-#endif
 #endif
 }
 
@@ -102,12 +118,8 @@ static void switch_game_player(Game *game)
 
     game->mode_flags ^= DOUBLE_PLAYER_MASK;
 
-#ifndef BENCHMARK_MODE
-    game->last_key_ticks = SDL_GetTicks(); // Refresh the UI
-
 #ifdef __EMSCRIPTEN__
     notify_mode_theme();
-#endif
 #endif
 }
 
@@ -119,12 +131,8 @@ static void switch_difficulty(Game *game)
     game->difficulty_index = (game->difficulty_index + 1) % NUM_DIFFICULTIES;
     set_ball_difficulty(&game->ball, ball_speed_generators[game->difficulty_index]);
 
-#ifndef BENCHMARK_MODE
-    game->last_key_ticks = SDL_GetTicks(); // Refresh the UI
-
 #ifdef __EMSCRIPTEN__
     notify_mode_theme();
-#endif
 #endif
 }
 
@@ -236,6 +244,8 @@ static void handle_touch(Game *game, SDL_TouchFingerEvent finger)
     if (game == NULL) return;
     if (game->state != GAME_RUNNING) return;
 
+    reset_idle_timer(game);
+
     /* Get the logical presentation rectangle */
     SDL_FRect logical_rect;
     SDL_GetRenderLogicalPresentationRect(game->window_renderer, &logical_rect);
@@ -281,7 +291,7 @@ static void double_tap_actions(Game *game)
             game->state = GAME_PAUSED;
             break;
         case GAME_PAUSED:
-            scheduler_add_task(game->scheduler, 0, game_resuming, game);
+            scheduler_add_task(game->scheduler, 0, game_resuming, NULL, game);
             break;
         case GAME_OVER:
             game_reset(game);
@@ -294,6 +304,10 @@ static void double_tap_actions(Game *game)
 
 static void handle_double_tap(Game *game, SDL_TouchFingerEvent finger)
 {
+    if (game == NULL) return;
+
+    reset_idle_timer(game);
+
     float touch_x = finger.x * WINDOW_WIDTH;
     float touch_y = finger.y * WINDOW_HEIGHT;
     Uint64 now = SDL_GetTicks();
@@ -335,7 +349,7 @@ static void handle_space_key(Game *game)
             game->state = GAME_PAUSED;
             break;
         case GAME_PAUSED:
-            scheduler_add_task(game->scheduler, 0, game_resuming, game);
+            scheduler_add_task(game->scheduler, 0, game_resuming, NULL, game);
             break;
         case GAME_OVER:
             game_reset(game);
@@ -409,8 +423,10 @@ static void handle_key_down(Game *game, SDL_KeyboardEvent key)
             break;
 
         default:
-            break;
+            return;
     }
+
+    reset_idle_timer(game);
 }
 
 static void show_welcome_screen(Game *game)
@@ -579,38 +595,6 @@ static float calculate_delta_time(Game *game)
     return dt;
 }
 
-#ifndef BENCHMARK_MODE
-
-/* Stop rendering when timeout to save energy */
-static bool handle_idle(Game *game)
-{
-    static GameState last_state = GAME_INIT;
-
-    if (game == NULL) return false;
-
-    if (game->state != last_state ||
-        game->state == GAME_RUNNING) // State change or game is running, reset the idle timer
-    {
-        last_state = game->state;
-        game->last_key_ticks = SDL_GetTicks();
-        return false;
-    }
-
-    if (game->snow.snowflake_count > 0)
-    {
-        game->last_key_ticks = SDL_GetTicks();
-        return false;
-    }
-
-    /* Calculate the idle time */
-    Uint64 now = SDL_GetTicks();
-    Uint64 idle_ms = now - game->last_key_ticks;
-    
-    return idle_ms > IDLE_TIMEOUT_MS;
-}
-
-#endif
-
 static void score_points(Game *game, bool is_left_score)
 {
     if (game == NULL) return;
@@ -768,7 +752,7 @@ LIST_OF_TEXTS
     game.state = GAME_INIT;
 
 #ifndef BENCHMARK_MODE
-    game.last_key_ticks = SDL_GetTicks();
+    reset_idle_timer(&game);
 #endif
     return SDL_APP_CONTINUE;
 }
@@ -784,7 +768,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 #endif
 
 #ifndef BENCHMARK_MODE
-    if (handle_idle(game))
+    if (game->state != GAME_RUNNING &&
+        (game->mode_flags & IDLE_MASK) &&
+        game->snow.snowflake_count == 0)
         return SDL_APP_CONTINUE;
 #endif
 
@@ -860,7 +846,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_WINDOW_MOVED:
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
         case SDL_EVENT_WINDOW_EXPOSED:
-            game->last_key_ticks = SDL_GetTicks(); /* Reset the idle timer when window has event */
+            reset_idle_timer(game); /* Reset the idle timer when window has event */
             break;
 #endif
         default:
@@ -876,6 +862,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
     fprintf(stdout, INFO_TEXT " Quitting...\n");
 
+    if (game->scheduler)
+        scheduler_destroy(&game->scheduler);
+
     if (game->window_renderer)
         SDL_DestroyRenderer(game->window_renderer);
 
@@ -884,9 +873,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
     if (game->snow.snow_sprite)
         SDL_DestroyTexture(game->snow.snow_sprite);
-
-    if (game->scheduler)
-        scheduler_destroy(&game->scheduler);
 
     for (int i = 0; i < NUM_TEXTS; i++)
         destroy_text_texture(game->texts + i);

@@ -9,10 +9,11 @@ extern "C" {
 
 typedef struct Scheduler Scheduler;
 
-typedef struct {
+typedef struct Task {
     Uint64 trigger_time;
     void (*callback)(void *user_data);
-    void *user_data;   
+    bool (*cancel_checker)(const struct Task *task);
+    void *user_data;  
 } Task;
 
 Scheduler *scheduler_create(void);
@@ -27,10 +28,13 @@ void scheduler_destroy(Scheduler **scheduler);
   * the relative time in milliseconds
   * @param callback
   * the callback function to be called when the task is triggered
+  * @param cancel_checker
+  * the cancel checker function to be called when the task is cancelled
   * @param user_data
   * the user data to be passed to the callback function
 */
-void scheduler_add_task(Scheduler *scheduler, Uint64 relative_time, void (*callback)(void *arg), void *user_data);
+void scheduler_add_task(Scheduler *scheduler, Uint64 relative_time, void (*callback)(void *arg),
+                 bool (*cancel_checker)(const Task *task), void *user_data);
 
 /* Clear all tasks from a scheduler */ 
 void scheduler_clear_tasks(Scheduler *scheduler);
