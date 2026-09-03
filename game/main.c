@@ -910,7 +910,7 @@ void resume_game(void)
 
     if (game_ptr->state != GAME_PAUSED) return;
 
-    scheduler_add_task(game_ptr->scheduler, 0, game_resuming, game_ptr);
+    scheduler_add_task(game_ptr->scheduler, 0, game_resuming, NULL, game_ptr);
 }
 
 EMSCRIPTEN_KEEPALIVE
